@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Cadastro de Alunos - Colégio Ângelis</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family: Arial, sans-serif; background: #f0f2f5; padding: 20px; margin:0; }
+h1,h2 { text-align:center; margin:10px 0; }
+.container { max-width: 1000px; margin:auto; background:white; padding:20px; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,0.2);}
+label { font-weight:bold; display:block; margin-top:10px; }
+input, select { width:100%; padding:8px; margin-top:5px; border-radius:6px; border:1px solid #ccc; box-sizing:border-box; }
+button { margin-top:10px; padding:8px; border:none; border-radius:6px; cursor:pointer; }
+button:hover { opacity:0.9; }
+.resultado, .resumo, .editar-box { margin-top:20px; padding:15px; border-radius:8px; background:#f9f9f9; border:1px solid #ddd; }
+.aprovado { color:green; font-weight:bold; }
+.reprovado { color:red; font-weight:bold; }
+table { width:100%; border-collapse:collapse; margin-top:10px; }
+th, td { border:1px solid #ddd; padding:8px; text-align:center; }
+th { background:#007BFF; color:white; }
+.edit-btn { background:orange; color:white; padding:4px 8px; border-radius:5px; border:none; cursor:pointer; }
+.edit-btn:hover { background:darkorange; }
+.remove-btn { background:red; color:white; padding:4px 8px; border-radius:5px; border:none; cursor:pointer; }
+.remove-btn:hover { background:darkred; }
+.accordion { cursor:pointer; background:#eee; padding:8px; border-radius:6px; border:none; width:100%; text-align:left; margin-top:5px; }
+.panel { display:none; background:#f1f1f1; padding:10px; border-radius:6px; margin-bottom:5px; }
+header { display:flex; align-items:center; justify-content:center; background:#007BFF; color:white; padding:15px; border-radius:12px 12px 0 0; margin-bottom:20px;}
+header img { height:50px; margin-right:15px; }
+.editar-box { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:white; z-index:1001; width:300px; box-shadow:0 4px 12px rgba(0,0,0,0.3); padding:20px; transition:0.3s; }
+.editar-box.show { display:block; }
+button.export-btn { width:100%; background:#007BFF; color:white; }
+@media(max-width:600px){
+    .container { padding:10px; }
+    table { font-size:12px; }
+}
+.card { display:flex; justify-content:space-between; background:#e9ecef; padding:10px; margin:5px 0; border-radius:6px; }
+</style>
+</head>
+<body>
+<header>
+  <img src="img/logo.jpg" alt="Logo da Escola">
+  <div>
+    <h1>Nome da escola</h1>
+    <p>Ano letivo 2025</p>
+  </div>
+</header>
+
+<div class="container">
+<h1>Cadastrar Alunos</h1>
+<label>Nome do Aluno:</label>
+<input type="text" id="nome" placeholder="Digite o nome">
+<label>Série:</label>
+<select id="serie">
+<option value="">Selecione</option>
+<option value="6">6º Ano</option>
+<option value="7">7º Ano</option>
+<option value="8">8º Ano</option>
+<option value="9">9º Ano</option>
+</select>
+<button onclick="cadastrarAluno()">Cadastrar Aluno</button>
+<div class="resultado" id="resultado"></div>
+
+<h2>Resumo e Busca</h2>
+<input type="text" id="buscaAluno" placeholder="Buscar aluno por nome" oninput="mostrarResumo()">
+<select id="filtroSituacao" onchange="mostrarResumo()">
+<option value="todos">Todos</option>
+<option value="aprovado">Aprovados</option>
+<option value="reprovado">Reprovados</option>
+</select>
+<select id="serieResumo" onchange="mostrarResumo()">
+<option value="">Todas as séries</option>
+<option value="6">6º Ano</option>
+<option value="7">7º Ano</option>
+<option value="8">8º Ano</option>
+<option value="9">9º Ano</option>
+</select>
+
+<div class="resumo" id="resumo"></div>
+<button class="export-btn" onclick="exportarCSV()">Exportar CSV</button>
+
+<h2>Gráfico de Desempenho</h2>
+<canvas id="grafico"></canvas>
+
+<div class="editar-box" id="editarBox">
+<h2>Editar Unidade</h2>
+<input type="hidden" id="editSerie">
+<input type="hidden" id="editAluno">
+<input type="hidden" id="editUnidade">
+<label>Teste:</label>
+<input type="number" id="editTeste" min="0" max="10" step="0.1">
+<label>Trabalho:</label>
+<input type="number" id="editTrabalho" min="0" max="10" step="0.1">
+<label>Prova:</label>
+<input type="number" id="editProva" min="0" max="10" step="0.1">
+<label>Ponto Qualitativo:</label>
+<input type="number" id="editQualitativo" min="0" max="10" step="0.1">
+<button onclick="salvarEdicao()">Salvar</button>
+<button onclick="cancelarEdicao()" style="background:gray;">Cancelar</button>
+</div>
+</div>
+
+<script>
+let chartInstance=null;
+
+// ===== Dados =====
+function carregarDados(){ return JSON.parse(localStorage.getItem("alunos"))||{}; }
+function salvarDados(dados){ localStorage.setItem("alunos", JSON.stringify(dados)); }
+function pegarAluno(serie, nome){ return carregarDados()[serie]?.find(a=>a.nome===nome); }
+
+// ===== Cadastro =====
+function cadastrarAluno(){
+  let nome=document.getElementById("nome").value.trim();
+  let serie=document.getElementById("serie").value;
+  if(nome.length<3){alert("Nome deve ter pelo menos 3 caracteres!"); return;}
+  if(!serie){alert("Selecione a série!"); return;}
+  let dados=carregarDados();
+  if(!dados[serie]) dados[serie]=[];
+  if(dados[serie].some(a=>a.nome.toLowerCase()===nome.toLowerCase())){alert("Aluno já cadastrado!"); return;}
+  dados[serie].push({nome, unidades:[]});
+  salvarDados(dados);
+  document.getElementById("resultado").innerHTML=`<p>Aluno ${nome} cadastrado na série ${serie}!</p>`;
+  document.getElementById("nome").value="";
+  mostrarResumo();
+}
+
+// ===== Resumo e filtros =====
+function mostrarResumo(){
+  let serieFiltro=document.getElementById("serieResumo").value;
+  let filtroSituacao=document.getElementById("filtroSituacao").value;
+  let busca=document.getElementById("buscaAluno").value.toLowerCase();
+  let dados=carregarDados();
+  let resumoDiv=document.getElementById("resumo");
+  let html="", mediasGeral=[];
+  let todasSeries=serieFiltro? [serieFiltro] : Object.keys(dados);
+
+  todasSeries.forEach(serie=>{
+    dados[serie].forEach(aluno=>{
+      if(busca && !aluno.nome.toLowerCase().includes(busca)) return;
+      let mediaGeral=aluno.unidades.length? (aluno.unidades.reduce((s,u)=>(s+u.teste+u.trabalho+u.prova+u.qualitativo)/4,0)/aluno.unidades.length) : 0;
+      let situacao=mediaGeral>=7 ? "aprovado" : "reprovado";
+      if(filtroSituacao!=="todos" && situacao!==filtroSituacao) return;
+      mediasGeral.push(mediaGeral);
+
+      html+=`<div class="card"><strong>${aluno.nome} (${serie}º Ano)</strong>
+      Média: ${mediaGeral.toFixed(2)} | <span class="${situacao}">${situacao==="aprovado"?"Aprovado 🎉":"Reprovado 😢"}</span>
+      <button class="edit-btn" onclick="adicionarUnidade('${serie}','${aluno.nome}')">Adicionar Unidade</button>
+      <button class="remove-btn" onclick="removerAluno('${serie}','${aluno.nome}')">Remover</button></div>`;
+
+      html+=`<button class="accordion">Detalhes das Unidades (${aluno.unidades.length})</button><div class="panel">`;
+      aluno.unidades.forEach((u,index)=>{
+        let mediaU=(u.teste+u.trabalho+u.prova+u.qualitativo)/4;
+        html+=`<div>Unidade ${u.numero}: Teste ${u.teste}, Trabalho ${u.trabalho}, Prova ${u.prova}, Qualitativo ${u.qualitativo}, Média: ${mediaU.toFixed(2)}
+        <button class="edit-btn" onclick="editarUnidade('${serie}','${aluno.nome}',${index})">Editar</button>
+        <button class="remove-btn" onclick="removerUnidade('${serie}','${aluno.nome}',${index})">Remover</button></div>`;
+      });
+      html+=`</div>`;
+    });
+  });
+
+  resumoDiv.innerHTML=html;
+
+  // Accordion
+  let acc=document.getElementsByClassName("accordion");
+  for(let i=0;i<acc.length;i++){
+    acc[i].onclick=function(){ this.classList.toggle("active"); let panel=this.nextElementSibling; panel.style.display=panel.style.display==="block"?"none":"block"; }
+  }
+
+  atualizarGrafico(mediasGeral);
+}
+
+// ===== Gerenciar unidades =====
+function adicionarUnidade(serie, alunoNome){
+  let dados=carregarDados();
+  let aluno=dados[serie].find(a=>a.nome===alunoNome);
+  let numero=aluno.unidades.length+1;
+  aluno.unidades.push({numero,teste:0,trabalho:0,prova:0,qualitativo:0});
+  salvarDados(dados);
+  mostrarResumo();
+}
+
+function editarUnidade(serie, alunoNome,index){
+  let u=pegarAluno(serie, alunoNome).unidades[index];
+  document.getElementById("editSerie").value=serie;
+  document.getElementById("editAluno").value=alunoNome;
+  document.getElementById("editUnidade").value=index;
+  document.getElementById("editTeste").value=u.teste;
+  document.getElementById("editTrabalho").value=u.trabalho;
+  document.getElementById("editProva").value=u.prova;
+  document.getElementById("editQualitativo").value=u.qualitativo;
+  document.getElementById("editarBox").classList.add("show");
+}
+
+function salvarEdicao(){
+  let serie=document.getElementById("editSerie").value;
+  let alunoNome=document.getElementById("editAluno").value;
+  let index=parseInt(document.getElementById("editUnidade").value);
+  let teste=Math.min(Math.max(parseFloat(document.getElementById("editTeste").value)||0,0),10);
+  let trabalho=Math.min(Math.max(parseFloat(document.getElementById("editTrabalho").value)||0,0),10);
+  let prova=Math.min(Math.max(parseFloat(document.getElementById("editProva").value)||0,0),10);
+  let qualitativo=Math.min(Math.max(parseFloat(document.getElementById("editQualitativo").value)||0,0),10);
+
+  let u=pegarAluno(serie, alunoNome).unidades[index];
+  u.teste=teste; u.trabalho=trabalho; u.prova=prova; u.qualitativo=qualitativo;
+  salvarDados(carregarDados());
+  document.getElementById("editarBox").classList.remove("show");
+  mostrarResumo();
+}
+
+function cancelarEdicao(){ document.getElementById("editarBox").classList.remove("show"); }
+
+function removerUnidade(serie, alunoNome,index){
+  if(!confirm("Remover esta unidade?")) return;
+  let aluno=pegarAluno(serie, alunoNome);
+  aluno.unidades.splice(index,1);
+  aluno.unidades.forEach((u,i)=>u.numero=i+1);
+  salvarDados(carregarDados());
+  mostrarResumo();
+}
+
+function removerAluno(serie, alunoNome){
+  if(!confirm("Remover este aluno?")) return;
+  let dados=carregarDados();
+  dados[serie]=dados[serie].filter(a=>a.nome!==alunoNome);
+  salvarDados(dados);
+  mostrarResumo();
+}
+
+// ===== Exportar CSV =====
+function exportarCSV(){
+  let serieFiltro=document.getElementById("serieResumo").value;
+  let dados=carregarDados();
+  if(!serieFiltro) serieFiltro="todas";
+  let linhas=["Aluno,Unidade,Teste,Trabalho,Prova,Qualitativo,Média,Situação"];
+  let seriesExport=serieFiltro==="todas"? Object.keys(dados):[serieFiltro];
+  seriesExport.forEach(serie=>{
+    dados[serie]?.forEach(aluno=>{
+      aluno.unidades.forEach(u=>{
+        let media=(u.teste+u.trabalho+u.prova+u.qualitativo)/4;
+        let situacao=media>=7?"Aprovado":"Reprovado";
+        linhas.push(`${aluno.nome},${u.numero},${u.teste},${u.trabalho},${u.prova},${u.qualitativo},${media.toFixed(2)},${situacao}`);
+      });
+    });
+  });
+  let csv=linhas.join("\n");
+  let blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+  let link=document.createElement("a");
+  link.href=URL.createObjectURL(blob);
+  link.download=`Resumo_Alunos.csv`;
+  link.click();
+}
+
+// ===== Gráfico =====
+function atualizarGrafico(medias){
+  let categorias=[0,0,0,0];
+  medias.forEach(m=>{
+    if(m<5) categorias[0]++;
+    else if(m<7) categorias[1]++;
+    else if(m<9) categorias[2]++;
+    else categorias[3]++;
+  });
+  let ctx=document.getElementById("grafico").getContext("2d");
+  if(chartInstance){
+    chartInstance.data.datasets[0].data=categorias;
+    chartInstance.update();
+  } else {
+    chartInstance=new Chart(ctx,{
+      type:"bar",
+      data:{labels:["0-4.9","5-6.9","7-8.9","9-10"], datasets:[{label:"Qtd de Unidades",data:categorias,backgroundColor:["#dc3545","#ffc107","#17a2b8","#28a745"]}]},
+      options:{responsive:true, plugins:{legend:{display:false},title:{display:true,text:"Distribuição de Médias"}}, scales:{y:{beginAtZero:true,stepSize:1}}}
+    });
+  }
+}
+
+mostrarResumo();
+</script>
+</body>
+</html>
